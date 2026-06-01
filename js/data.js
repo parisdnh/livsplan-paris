@@ -138,12 +138,18 @@ const DEFAULT_MONTHS = [
 
 const DEFAULT_BUDGET_SECTIONS = [
   {
-    title:'🇳🇴 Sommer i Norge (jun–aug)',
+    title:'💰 Inntekter (jun–aug)',
     rows:[
-      {cat:'Lappen (oppkjøring + prøve)', budget:10000, spent:0},
-      {cat:'Sparing til reisebuffer',      budget:15000, spent:0},
-      {cat:'Levekostnader (mat, transport)',budget:9000,  spent:0},
-      {cat:'Sosiale ting / sommer',        budget:4000,  spent:0},
+      {cat:'Juni — Høyer deltid + småjobber', budget:2000,  spent:0},
+      {cat:'Juli — Høyer + sesong',           budget:9000,  spent:0},
+      {cat:'August — Høyer høysesong',        budget:15000, spent:0},
+    ]
+  },
+  {
+    title:'📋 Utgifter (jun–aug)',
+    rows:[
+      {cat:'Lappen (oppkjøring + prøve)',     budget:12500, spent:0},
+      {cat:'Sosialt / sommer',                budget:500,   spent:0},
     ]
   },
   {

@@ -222,11 +222,13 @@ REGLER:
         'anthropic-version': '2023-06-01',
         'anthropic-dangerous-direct-browser-access': 'true',
       },
+      // Prefill tvinger JSON-output — AI fortsetter etter '{"message":"'
+      const prefill = '{"message":"';
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
         max_tokens: 8000,
         system: systemPrompt,
-        messages: persistentHistory,
+        messages: [...persistentHistory, { role: 'assistant', content: prefill }],
       }),
     });
 
@@ -236,7 +238,8 @@ REGLER:
     }
 
     const result = await res.json();
-    const raw    = result.content[0].text;
+    const continuation = result.content[0].text;
+    const raw = prefill + continuation;   // rekonstruer full JSON-streng
     persistentHistory.push({ role: 'assistant', content: raw });
 
     removePersistentTyping();
@@ -246,13 +249,18 @@ REGLER:
 
     let parsed;
     try {
-      const start = raw.indexOf('{');
-      const end   = raw.lastIndexOf('}');
-      parsed = JSON.parse(raw.slice(start, end + 1));
+      parsed = JSON.parse(raw);
     } catch {
-      addPersistentMsg(raw, 'ai');
-      success = true;
-      return;
+      // Prøv å finne JSON i svaret som fallback
+      try {
+        const start = raw.indexOf('{');
+        const end   = raw.lastIndexOf('}');
+        parsed = JSON.parse(raw.slice(start, end + 1));
+      } catch {
+        addPersistentMsg(continuation, 'ai');
+        success = true;
+        return;
+      }
     }
 
     addPersistentMsg(parsed.message || raw, 'ai');
