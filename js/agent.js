@@ -2,6 +2,8 @@
    agent.js — AI tilpass-plan chat
    ============================================================ */
 
+const HISTORY_TTL = 24 * 60 * 60 * 1000; // 24 timer
+
 function createProgress(barId, labelId, stages) {
   let timer = null, value = 0, stage = 0;
   function draw(pct, lbl) {
@@ -35,6 +37,47 @@ const updProgress = createProgress('upd-bar', 'upd-label', [
   { pct: 92, label: 'Nesten ferdig…' },
 ]);
 
+// ── State ─────────────────────────────────────────────────────
+// persistentHistory    = [{ role, content }]        — sendes til API
+// persistentDisplayLog = [{ html, role, ts }]       — vises + lagres
+let persistentHistory    = [];
+let persistentDisplayLog = [];
+let persistentTypingEl   = null;
+
+// ── Chat-historikk i localStorage (24t) ──────────────────────
+function saveChatHistory() {
+  try {
+    localStorage.setItem('lp_chat_api',     JSON.stringify(persistentHistory));
+    localStorage.setItem('lp_chat_display', JSON.stringify(persistentDisplayLog));
+  } catch { /* storage full — ignorer */ }
+}
+
+function loadChatHistory() {
+  try {
+    const displayLog = JSON.parse(localStorage.getItem('lp_chat_display') || '[]');
+    if (!displayLog.length) return false;
+
+    const lastTs = displayLog[displayLog.length - 1].ts || 0;
+    if (Date.now() - lastTs > HISTORY_TTL) return false;
+
+    const apiHistory = JSON.parse(localStorage.getItem('lp_chat_api') || '[]');
+    persistentHistory    = apiHistory;
+    persistentDisplayLog = displayLog;
+
+    const box = document.getElementById('persistent-messages');
+    displayLog.forEach(({ html, role }) => {
+      const bubble = document.createElement('div');
+      bubble.className = 'chat-bubble chat-bubble-' + role;
+      bubble.innerHTML = html;
+      box.appendChild(bubble);
+    });
+    box.scrollTop = box.scrollHeight;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ── API-nøkkel ────────────────────────────────────────────────
 function savePersistentApiKey() {
   const inp = document.getElementById('persistent-api-input');
@@ -51,9 +94,6 @@ function savePersistentApiKey() {
 }
 
 // ── Panel toggle ──────────────────────────────────────────────
-let persistentHistory  = [];
-let persistentTypingEl = null;
-
 function togglePersistentChat() {
   const panel   = document.getElementById('persistent-panel');
   const opening = !panel.classList.contains('open');
@@ -64,8 +104,16 @@ function togglePersistentChat() {
   if (!apiKey) {
     document.getElementById('persistent-api-section').style.display = 'block';
     document.getElementById('persistent-input-row').style.display   = 'none';
-  } else if (persistentHistory.length === 0) {
-    initPersistentChat();
+    return;
+  }
+
+  if (persistentDisplayLog.length === 0) {
+    const hadHistory = loadChatHistory();
+    if (!hadHistory) {
+      initPersistentChat();
+    } else {
+      document.getElementById('persistent-input-row').style.display = 'flex';
+    }
   }
 }
 
@@ -82,13 +130,18 @@ function initPersistentChat() {
   );
 }
 
-function addPersistentMsg(html, role) {
+function addPersistentMsg(html, role, save = true) {
   const box    = document.getElementById('persistent-messages');
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble chat-bubble-' + role;
   bubble.innerHTML = html.replace(/\n/g, '<br>');
   box.appendChild(bubble);
   box.scrollTop = box.scrollHeight;
+
+  if (save) {
+    persistentDisplayLog.push({ html: bubble.innerHTML, role, ts: Date.now() });
+    saveChatHistory();
+  }
 }
 
 function showPersistentTyping() {
@@ -117,8 +170,9 @@ async function sendPersistentMessage() {
     return;
   }
 
-  inp.value = '';
+  inp.value    = '';
   inp.disabled = true;
+
   addPersistentMsg(msg, 'user');
   persistentHistory.push({ role: 'user', content: msg });
   if (persistentHistory.length > 20) persistentHistory = persistentHistory.slice(-20);
@@ -156,6 +210,7 @@ Svar ALLTID med et gyldig JSON-objekt:
 Inkluder kun feltene i "update" som faktisk endres. Utelat "update" helt hvis ingenting i planen endres.
 Svar på norsk. Vær konkret og motiverende.`;
 
+  let success = false;
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -194,7 +249,7 @@ Svar på norsk. Vær konkret og motiverende.`;
       parsed = JSON.parse(raw.slice(start, end + 1));
     } catch {
       addPersistentMsg(raw, 'ai');
-      inp.disabled = false; inp.focus();
+      success = true;
       return;
     }
 
@@ -202,8 +257,12 @@ Svar på norsk. Vær konkret og motiverende.`;
     if (parsed.update && Object.keys(parsed.update).length > 0) {
       applyPlanUpdate(parsed.update);
     }
+    success = true;
 
   } catch (err) {
+    // Fjern brukerens melding fra API-historikk så retry fungerer
+    persistentHistory.pop();
+
     removePersistentTyping();
     updProgress.finish(() => {
       document.getElementById('persistent-updating').style.display = 'none';
@@ -218,22 +277,24 @@ Svar på norsk. Vær konkret og motiverende.`;
       document.getElementById('persistent-api-section').style.display = 'block';
       document.getElementById('persistent-input-row').style.display   = 'none';
     } else {
-      addPersistentMsg(`Noe gikk galt: ${err.message}`, 'ai');
+      addPersistentMsg(`Noe gikk galt: ${err.message}\n\nPrøv å sende meldingen på nytt.`, 'ai');
+    }
+  } finally {
+    inp.disabled = false;
+    if (success || document.getElementById('persistent-input-row').style.display !== 'none') {
+      inp.focus();
     }
   }
-
-  inp.disabled = false;
-  inp.focus();
 }
 
 // ── Anvend planendringer ──────────────────────────────────────
 function applyPlanUpdate(update) {
   let changed = false;
 
-  if (update.goals)          { goals          = update.goals;          changed = true; }
-  if (update.months)         { months         = update.months;         changed = true; }
-  if (update.budgetSections) { budget         = update.budgetSections; changed = true; }
-  if (update.sparemaal)      { savings.goal   = update.sparemaal;      changed = true; }
+  if (update.goals)          { goals        = update.goals;          changed = true; }
+  if (update.months)         { months       = update.months;         changed = true; }
+  if (update.budgetSections) { budget       = update.budgetSections; changed = true; }
+  if (update.sparemaal)      { savings.goal = update.sparemaal;      changed = true; }
 
   if (changed) {
     persist();
