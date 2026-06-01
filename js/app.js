@@ -3,10 +3,17 @@
    ============================================================ */
 
 // ── State ────────────────────────────────────────────────────
-let months   = JSON.parse(localStorage.getItem('paris_months'))   || JSON.parse(JSON.stringify(DEFAULT_MONTHS));
-let budget   = JSON.parse(localStorage.getItem('paris_budget'))   || JSON.parse(JSON.stringify(DEFAULT_BUDGET_SECTIONS));
-let goals    = JSON.parse(localStorage.getItem('paris_goals'))    || JSON.parse(JSON.stringify(DEFAULT_GOALS));
-let savings  = JSON.parse(localStorage.getItem('paris_savings'))  || { current: 0, log: [], goal: SAVINGS_GOAL };
+function loadOrDefault(key, fallback) {
+  try {
+    const val = JSON.parse(localStorage.getItem(key));
+    return (Array.isArray(val) ? val.length > 0 : val != null) ? val : JSON.parse(JSON.stringify(fallback));
+  } catch { return JSON.parse(JSON.stringify(fallback)); }
+}
+
+let months   = loadOrDefault('paris_months',  DEFAULT_MONTHS);
+let budget   = loadOrDefault('paris_budget',  DEFAULT_BUDGET_SECTIONS);
+let goals    = loadOrDefault('paris_goals',   DEFAULT_GOALS);
+let savings  = loadOrDefault('paris_savings', { current: 0, log: [], goal: SAVINGS_GOAL });
 
 // ── Persist ──────────────────────────────────────────────────
 function persist() {

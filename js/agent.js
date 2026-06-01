@@ -288,13 +288,17 @@ Svar på norsk. Vær konkret og motiverende.`;
 }
 
 // ── Anvend planendringer ──────────────────────────────────────
+function isValidArray(arr) {
+  return Array.isArray(arr) && arr.length > 0;
+}
+
 function applyPlanUpdate(update) {
   let changed = false;
 
-  if (update.goals)          { goals        = update.goals;          changed = true; }
-  if (update.months)         { months       = update.months;         changed = true; }
-  if (update.budgetSections) { budget       = update.budgetSections; changed = true; }
-  if (update.sparemaal)      { savings.goal = update.sparemaal;      changed = true; }
+  if (isValidArray(update.goals))          { goals        = update.goals;          changed = true; }
+  if (isValidArray(update.months))         { months       = update.months;         changed = true; }
+  if (isValidArray(update.budgetSections)) { budget       = update.budgetSections; changed = true; }
+  if (update.sparemaal > 0)               { savings.goal = update.sparemaal;      changed = true; }
 
   if (changed) {
     persist();
